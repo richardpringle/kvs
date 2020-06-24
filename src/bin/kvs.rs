@@ -1,9 +1,11 @@
 use clap::{App, Arg, ArgMatches};
+use std::env;
 // use kvs::KvStore;
-
 fn main() {
-    let matches = App::new("kvs")
-        .version("0.1.0")
+    let bin_name = env::var("CARGO_PKG_NAME").unwrap();
+    let version = env::var("CARGO_PKG_VERSION").unwrap();
+    let matches = App::new(bin_name.as_str())
+        .version(version.as_str())
         .subcommand(App::new("get").arg(Arg::with_name("key").index(1).required(true)))
         .subcommand(
             App::new("set")
