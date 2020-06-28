@@ -9,8 +9,8 @@ use std::{
 };
 use thiserror;
 
-// 1 MB
-const COMPACTION_TRIGGER_SIZE: u64 = 1_000_000;
+// 200 MB
+const COMPACTION_TRIGGER_SIZE: u64 = 200_000_000;
 const DB_FILE_NAME: &str = "kvs.db";
 const INDEX_FILE_NAME: &str = "kvs-index.json";
 
@@ -32,24 +32,21 @@ impl From<io::Error> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-// impl Serialize for Command
-
 const SCHEMA: &str = r#"
     {
         "type": "record",
         "name": "triple",
         "fields": [
             { "name": "key", "type": "string" },
-            { "name": "value", "type": "string" }
+            { "name": "value", "type": ["string", "null"], "default": null }
         ]
     }
 "#;
 
 mod command;
 
-use command::Command;
+use command::{BorrowedCommand, OwnedCommand};
 
-/// Currently, there's no real reason to use `KvStore` over using a regular `HashMap`
 pub struct KvStore {
     index: HashMap<String, (u64, usize)>,
     storage_dir: PathBuf,
@@ -73,8 +70,8 @@ impl KvStore {
             .append(true)
             .open(file_path)?;
 
+        // TODO: re-create the index if it doesn't exist
         let index_file = fs::read(index_path).unwrap_or(b"{}".to_vec());
-
         let index: HashMap<String, (u64, usize)> = serde_json::from_slice(&index_file).unwrap();
 
         Self {
@@ -93,7 +90,7 @@ impl KvStore {
         let mut len = 0;
 
         len += writer
-            .append_ser(Command(key.clone(), value))
+            .append_ser(BorrowedCommand(&key, Some(&value.as_str())))
             .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
         len += writer
             .flush()
@@ -121,14 +118,11 @@ impl KvStore {
         let mut reader = Reader::with_schema(&self.schema, bytes.as_slice())
             .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
 
-        let value = reader
+        reader
             .next()
-            .map(|value| value.unwrap())
-            .map(|value| avro_rs::from_value::<Command>(&value).unwrap())
+            .map(|value| avro_rs::from_value::<OwnedCommand>(&value.unwrap()))
+            .map(|value| value.unwrap().1)
             .unwrap()
-            .1;
-
-        Some(value)
     }
 
     #[throws]
@@ -138,8 +132,23 @@ impl KvStore {
         }
 
         self.index.remove(&key);
+
+        let start = self.file.metadata()?.len();
+        let mut writer = Writer::new(&self.schema, &self.file);
+
+        writer
+            .append_ser(BorrowedCommand(&key, None))
+            .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
+        writer
+            .flush()
+            .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
+
+        if start > COMPACTION_TRIGGER_SIZE {
+            self.compact()?;
+        }
     }
 
+    /// TODO: could do compaction on a subset of the logged file
     #[throws]
     fn compact(&mut self) {
         let mut temp_dir = self.storage_dir.clone();
