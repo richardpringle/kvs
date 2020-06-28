@@ -1,12 +1,12 @@
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Debug)]
-pub struct Command(pub String, pub Option<String>);
+pub struct Command(pub String, pub String);
 
 #[derive(Serialize, Deserialize, Clone)]
 struct KeyedCommand {
     key: String,
-    value: Option<String>,
+    value: String,
 }
 
 impl Command {

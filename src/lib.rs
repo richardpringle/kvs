@@ -40,7 +40,7 @@ const SCHEMA: &str = r#"
         "name": "triple",
         "fields": [
             { "name": "key", "type": "string" },
-            { "name": "value", "type": ["string", "null"], "default": null }
+            { "name": "value", "type": "string" }
         ]
     }
 "#;
@@ -95,7 +95,7 @@ impl KvStore {
         let mut len = 0;
 
         len += writer
-            .append_ser(Command(key.clone(), Some(value)))
+            .append_ser(Command(key.clone(), value))
             .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
         len += writer
             .flush()
@@ -123,12 +123,14 @@ impl KvStore {
         let mut reader = Reader::with_schema(&self.schema, bytes.as_slice())
             .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
 
-        reader
+        let value = reader
             .next()
             .map(|value| value.unwrap())
             .map(|value| avro_rs::from_value::<Command>(&value).unwrap())
             .unwrap()
-            .1
+            .1;
+
+        Some(value)
     }
 
     #[throws]
@@ -136,22 +138,8 @@ impl KvStore {
         if !self.index.contains_key(&key) {
             throw!(Error::NotFound);
         }
+
         self.index.remove(&key);
-
-        let start = self.file.metadata()?.len();
-
-        let mut writer = Writer::new(&self.schema, &self.file);
-
-        writer
-            .append_ser(Command(key.clone(), None))
-            .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
-        writer
-            .flush()
-            .map_err(|err| Error::Avro(String::from(err.name().unwrap_or("unknown"))))?;
-
-        if start > COMPACTION_TRIGGER_SIZE {
-            self.compact()?;
-        }
     }
 
     #[throws]
