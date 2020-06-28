@@ -1,2 +1,4 @@
 /target
 Cargo.lock
+kvs-index.json
+kvs.db
