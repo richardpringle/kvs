@@ -1,7 +1,8 @@
 use clap::{App, Arg, ArgMatches};
+use kvs::{KvStore, Result};
 use std::env;
-// use kvs::KvStore;
-fn main() {
+
+fn main() -> Result<()> {
     let bin_name = env::var("CARGO_PKG_NAME").unwrap();
     let version = env::var("CARGO_PKG_VERSION").unwrap();
     let matches = App::new(bin_name.as_str())
@@ -19,29 +20,40 @@ fn main() {
         )
         .get_matches();
 
+    let store = KvStore::open("")?;
+
     match matches.subcommand_name() {
-        Some("get") => get(matches.subcommand_matches("get").unwrap()),
-        Some("set") => set(matches.subcommand_matches("set").unwrap()),
-        Some("remove") => remove(matches.subcommand_matches("remove").unwrap()),
+        Some("get") => get(store, matches.subcommand_matches("get").unwrap()),
+        Some("set") => set(store, matches.subcommand_matches("set").unwrap()),
+        Some("remove") => remove(store, matches.subcommand_matches("remove").unwrap()),
         _ => todo!(),
-    };
+    }?
+    .map(|value| println!("{}", value));
+
+    Ok(())
 }
 
-fn get(matches: &ArgMatches) {
-    let _key = matches.value_of("key").unwrap();
-    eprintln!("unimplemented");
-    std::process::exit(1);
+fn get(mut store: KvStore, matches: &ArgMatches) -> Result<Option<String>> {
+    let key = matches.value_of("key").unwrap().into();
+    Ok(store.get(key)?.or_else(|| Some("Key not found".into())))
 }
 
-fn set(matches: &ArgMatches) {
-    let _key = matches.value_of("key").unwrap();
-    let _value = matches.value_of("value").unwrap();
-    eprintln!("unimplemented");
-    std::process::exit(1);
+fn set(mut store: KvStore, matches: &ArgMatches) -> Result<Option<String>> {
+    let key = matches.value_of("key").unwrap();
+    let value = matches.value_of("value").unwrap();
+
+    store.set(key.into(), value.into())?;
+
+    Ok(None)
 }
 
-fn remove(matches: &ArgMatches) {
-    let _key = matches.value_of("key").unwrap();
-    eprintln!("unimplemented");
-    std::process::exit(1);
+fn remove(mut store: KvStore, matches: &ArgMatches) -> Result<Option<String>> {
+    let key = matches.value_of("key").unwrap().into();
+
+    let _ = store.remove(key).map_err(|err| {
+        println!("Key not found");
+        err
+    })?;
+
+    Ok(None)
 }
