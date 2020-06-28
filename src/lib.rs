@@ -52,7 +52,6 @@ use command::Command;
 /// Currently, there's no real reason to use `KvStore` over using a regular `HashMap`
 pub struct KvStore {
     index: HashMap<String, (u64, usize)>,
-    index_path: PathBuf,
     storage_dir: PathBuf,
     file: File,
     schema: Schema,
@@ -61,9 +60,9 @@ pub struct KvStore {
 impl KvStore {
     #[throws]
     pub fn open(path: impl Into<PathBuf>) -> Self {
-        let path = path.into();
-        let mut index_path = path.clone();
-        let mut file_path = path.clone();
+        let storage_dir = path.into();
+        let mut index_path = storage_dir.clone();
+        let mut file_path = storage_dir.clone();
         index_path.push(INDEX_FILE_NAME);
         file_path.push(DB_FILE_NAME);
 
@@ -74,14 +73,13 @@ impl KvStore {
             .append(true)
             .open(file_path)?;
 
-        let index_file = fs::read(index_path.clone()).unwrap_or(b"{}".to_vec());
+        let index_file = fs::read(index_path).unwrap_or(b"{}".to_vec());
 
         let index: HashMap<String, (u64, usize)> = serde_json::from_slice(&index_file).unwrap();
 
         Self {
             index,
-            index_path,
-            storage_dir: path,
+            storage_dir,
             file,
             schema,
         }
@@ -177,7 +175,8 @@ impl KvStore {
 
 impl Drop for KvStore {
     fn drop(&mut self) {
-        let bytes = serde_json::to_vec(&self.index).unwrap();
-        fs::write(self.index_path.clone(), bytes).unwrap();
+        let mut index_path = std::mem::take(&mut self.storage_dir);
+        index_path.push(INDEX_FILE_NAME);
+        fs::write(index_path, serde_json::to_vec(&self.index).unwrap()).unwrap();
     }
 }
