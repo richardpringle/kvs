@@ -9,8 +9,8 @@ use std::{
 };
 use thiserror;
 
-// 200 MB
-const COMPACTION_TRIGGER_SIZE: u64 = 200_000_000;
+// 10 MB
+const COMPACTION_TRIGGER_SIZE: u64 = 10_000_000;
 const DB_FILE_NAME: &str = "kvs.db";
 const INDEX_FILE_NAME: &str = "kvs-index.json";
 
@@ -103,13 +103,18 @@ impl KvStore {
         }
     }
 
+    pub fn get(&mut self, key: String) -> Result<Option<String>> {
+        self.get_with_borrowed_key(&key)
+    }
+
+    /// Because their API is stupid...
     #[throws]
-    pub fn get(&mut self, key: String) -> Option<String> {
-        if !self.index.contains_key(&key) {
+    fn get_with_borrowed_key(&mut self, key: &str) -> Option<String> {
+        if !self.index.contains_key(key) {
             return None;
         }
 
-        let (start, len) = *self.index.get(&key).unwrap();
+        let (start, len) = *self.index.get(key).unwrap();
 
         let mut bytes = vec![0u8; len];
         self.file.seek(SeekFrom::Start(start)).unwrap();
@@ -161,7 +166,7 @@ impl KvStore {
             let keys: Vec<String> = self.index.keys().map(|key| key.clone()).collect();
 
             for key in keys {
-                let value = self.get(key.clone())?.unwrap();
+                let value = self.get_with_borrowed_key(&key)?.unwrap();
                 new_store.set(key, value)?;
             }
 
