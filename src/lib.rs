@@ -103,8 +103,9 @@ impl KvStore {
         }
     }
 
-    pub fn get(&mut self, key: String) -> Result<Option<String>> {
-        self.get_with_borrowed_key(&key)
+    #[throws]
+    pub fn get(&mut self, key: String) -> Option<String> {
+        self.get_with_borrowed_key(&key)?
     }
 
     /// Because their API is stupid...
